@@ -21,14 +21,14 @@ export class CLI_UI {
 
             if (fs.existsSync(bannerPath)) {
                 const banner = fs.readFileSync(bannerPath, 'utf8');
-                console.log(chalk.cyan(banner));
+                // Kullanıcının isteği üzerine logo artık tamamen beyaz
+                console.log(chalk.white(banner));
             } else {
-                console.log(chalk.cyan.bold('\n  TAMGABASE  \n'));
+                console.log(chalk.white.bold('\n  TAMGABASE  \n'));
             }
             
             console.log(chalk.gray('  Local-first distributed storage & synchronization\n'));
 
-            // Display current mode as a badge
             const config = configManager.getConfig();
             if (config.mode === 'server') {
                 console.log('  ' + chalk.bgCyan.black.bold(' MODE: SERVER ') + ' \n');
@@ -39,7 +39,7 @@ export class CLI_UI {
             }
 
         } catch (error) {
-            console.log(chalk.cyan('TamgaBase'));
+            console.log(chalk.white('TamgaBase'));
         }
     }
 
