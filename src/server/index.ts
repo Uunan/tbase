@@ -6,6 +6,7 @@ import { configManager } from '../utils/config.js';
 import { KeyManager } from '../core/keys.js';
 import chalk from 'chalk';
 import path from 'path';
+import os from 'os';
 
 export const startServer = () => {
     const config = configManager.getConfig();
@@ -34,6 +35,13 @@ export const startServer = () => {
         console.log(chalk.green(`  ✓ TamgaBase Server running on port ${port}`));
         console.log(chalk.cyan(`  Storage Path: ${storagePath}`));
         console.log(chalk.cyan(`  Key Policy: ${config.keyPolicy}`));
+        
+        // Linux/Ubuntu kullanıcıları için akıllı Güvenlik Duvarı uyarısı
+        if (os.platform() === 'linux') {
+            console.log(chalk.gray(`\n  [INFO] If clients cannot connect, remember to open your Linux firewall:`));
+            console.log(chalk.white(`         sudo ufw allow ${port}/tcp`));
+        }
+
         console.log(`\n  ⏳ Waiting for client connections...\n`);
     });
 
@@ -41,8 +49,13 @@ export const startServer = () => {
         if (err.code === 'EADDRINUSE') {
             console.log(chalk.red(`\n  [ERROR] Port ${port} is already in use.`));
             console.log(chalk.yellow(`  It seems another TamgaBase server (or process) is already running on this port.`));
-            console.log(chalk.gray(`  To fix this in PowerShell, run:`));
-            console.log(chalk.white(`  Stop-Process -Id (Get-NetTCPConnection -LocalPort ${port}).OwningProcess -Force`));
+            if (os.platform() === 'win32') {
+                console.log(chalk.gray(`  To fix this in PowerShell, run:`));
+                console.log(chalk.white(`  Stop-Process -Id (Get-NetTCPConnection -LocalPort ${port}).OwningProcess -Force`));
+            } else {
+                console.log(chalk.gray(`  To fix this in Linux/Mac, run:`));
+                console.log(chalk.white(`  sudo kill -9 $(lsof -t -i:${port})`));
+            }
             console.log();
             process.exit(1);
         } else {
