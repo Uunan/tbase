@@ -1,0 +1,45 @@
+{
+  "name": "@tamgallc/tamgabase",
+  "version": "1.0.0",
+  "description": "Git-like, self-hosted data synchronization and storage CLI system",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "keywords": [
+    "storage",
+    "sync",
+    "git-like",
+    "tamgabase",
+    "tcc"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@inquirer/prompts": "^8.5.2",
+    "chalk": "^4.1.2",
+    "commander": "^15.0.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "isomorphic-git": "^1.41.5",
+    "ora": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.2.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^7.0.2"
+  },
+  "bin": {
+    "tamgabase": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "ascii-art.txt",
+    "README.md"
+  ]
+}
