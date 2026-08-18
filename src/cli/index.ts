@@ -5,6 +5,7 @@ import { Logger } from '../utils/logger.js';
 import { KeyManager } from '../core/keys.js';
 import chalk from 'chalk';
 import path from 'path';
+import fs from 'fs';
 import { confirm } from '@inquirer/prompts';
 
 export async function runCLI() {
@@ -12,22 +13,58 @@ export async function runCLI() {
     program
         .name('tamgabase')
         .description('TamgaBase - Git-like self-hosted data synchronization')
-        .version('1.0.0');
+        .version('1.0.1');
 
-    // We can run displayBanner at the very beginning of the CLI execution 
-    // if no arguments are provided, or for specific commands.
-    
     program
         .command('init')
         .description('Initialize TamgaBase configuration')
         .action(async () => {
             CLI_UI.displayBanner();
-            const config = configManager.getConfig();
+            let config = configManager.getConfig();
             
             if (config.mode) {
                 Logger.warn(`TamgaBase is already initialized in ${config.mode.toUpperCase()} mode.`);
-                console.log(chalk.gray(`To reconfigure, delete the config directory: ~/.tamgabase`));
-                return;
+                
+                // İki aşamalı onay mekanizması (Two-step confirmation)
+                const wantsReset = await confirm({ 
+                    message: 'Do you want to reset current configuration and re-initialize?', 
+                    default: false 
+                });
+
+                if (!wantsReset) {
+                    console.log(chalk.gray('Initialization cancelled.'));
+                    return;
+                }
+
+                const areYouSure = await confirm({
+                    message: chalk.red('Are you absolutely sure? This will remove your current settings!'),
+                    default: false
+                });
+
+                if (!areYouSure) {
+                    console.log(chalk.gray('Initialization cancelled.'));
+                    return;
+                }
+
+                // Ayarları sıfırla
+                configManager.setConfig({
+                    mode: null,
+                    serverAddress: undefined,
+                    serverPort: undefined,
+                    storagePath: undefined,
+                    workspacePath: undefined,
+                    keyPolicy: undefined
+                });
+                
+                // Anahtar dosyasını da temizle (Eğer server idiyse)
+                try {
+                    const keyPath = path.join(configManager.getConfigDir(), '.server_key');
+                    if (fs.existsSync(keyPath)) {
+                        fs.unlinkSync(keyPath);
+                    }
+                } catch(e) {}
+                
+                console.log(chalk.green('\nConfiguration reset successfully. Starting fresh...\n'));
             }
 
             const mode = await CLI_UI.askMode();
@@ -45,10 +82,10 @@ export async function runCLI() {
                 const key = KeyManager.initializeKey();
 
                 Logger.success('Server initialized successfully!');
-                console.log(chalk.yellow(`\n🔑 Your Server Key is: `) + chalk.bgWhite.black(` ${key} `));
+                console.log(chalk.yellow(`\n  🔑 Your Server Key is: `) + chalk.bgWhite.black(` ${key} `));
                 
                 if (policy === 'show_once') {
-                    console.log(chalk.red.bold('\n⚠️ WARNING: This key will only be shown ONCE. Store it securely!'));
+                    console.log(chalk.red.bold('\n  ⚠️ WARNING: This key will only be shown ONCE. Store it securely!'));
                 }
                 
                 console.log(chalk.green('\nYou can now start the server with: ') + chalk.bold('tamgabase server'));
@@ -59,7 +96,6 @@ export async function runCLI() {
                 const key = await CLI_UI.askServerKey();
                 
                 Logger.info('Testing connection to TamgaBase server...');
-                // We could actually test the connection here by instantiating ClientAPI
                 
                 configManager.setConfig({
                     mode: 'client',
