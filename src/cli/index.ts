@@ -13,7 +13,7 @@ export async function runCLI() {
     program
         .name('tamgabase')
         .description('TamgaBase - Git-like self-hosted data synchronization')
-        .version('1.0.1');
+        .version('1.0.3');
 
     program
         .command('init')
@@ -25,7 +25,6 @@ export async function runCLI() {
             if (config.mode) {
                 Logger.warn(`TamgaBase is already initialized in ${config.mode.toUpperCase()} mode.`);
                 
-                // İki aşamalı onay mekanizması (Two-step confirmation)
                 const wantsReset = await confirm({ 
                     message: 'Do you want to reset current configuration and re-initialize?', 
                     default: false 
@@ -46,7 +45,6 @@ export async function runCLI() {
                     return;
                 }
 
-                // Ayarları sıfırla
                 configManager.setConfig({
                     mode: null,
                     serverAddress: undefined,
@@ -56,7 +54,6 @@ export async function runCLI() {
                     keyPolicy: undefined
                 });
                 
-                // Anahtar dosyasını da temizle (Eğer server idiyse)
                 try {
                     const keyPath = path.join(configManager.getConfigDir(), '.server_key');
                     if (fs.existsSync(keyPath)) {
@@ -168,6 +165,47 @@ export async function runCLI() {
             const { SyncEngine } = await import('../client/sync.js');
             const engine = new SyncEngine();
             await engine.pull();
+        });
+
+    program
+        .command('heartbeat')
+        .description('Continuously ping the server until "q" is pressed')
+        .action(async () => {
+            CLI_UI.displayBanner();
+            const config = configManager.getConfig();
+            if (config.mode !== 'client') {
+                Logger.error('You are not configured as a client. Run `tamgabase init` first.');
+                process.exit(1);
+            }
+            const { ClientAPI } = await import('../client/api.js');
+            const api = new ClientAPI();
+            
+            console.log(chalk.cyan('  Starting heartbeat. Press "q" to stop.\n'));
+            
+            process.stdin.setRawMode(true);
+            process.stdin.resume();
+            process.stdin.on('data', (key) => {
+                if (key.toString().toLowerCase() === 'q' || key[0] === 3 /* Ctrl+C */) {
+                    console.log(chalk.yellow('\n  Heartbeat stopped.'));
+                    process.exit(0);
+                }
+            });
+
+            const ping = async () => {
+                const start = Date.now();
+                const ok = await api.healthCheck();
+                const latency = Date.now() - start;
+                const time = new Date().toLocaleTimeString();
+                
+                if (ok) {
+                    console.log(chalk.green(`  [${time}] PONG from ${config.serverAddress}:${config.serverPort} - ${latency}ms`));
+                } else {
+                    console.log(chalk.red(`  [${time}] FAIL to reach ${config.serverAddress}:${config.serverPort}`));
+                }
+            };
+
+            ping();
+            setInterval(ping, 1000);
         });
 
     const keyCmd = program.command('key').description('Manage server keys');

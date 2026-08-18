@@ -1,6 +1,6 @@
 {
   "name": "@tamgallc/tamgabase",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Git-like, self-hosted data synchronization and storage CLI system",
   "main": "index.js",
   "scripts": {

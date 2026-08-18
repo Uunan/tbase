@@ -27,12 +27,17 @@ export class SyncEngine {
         this.workspace = config.workspacePath;
     }
 
-    private async scanDirectory(dir: string, baseDir: string): Promise<FileState[]> {
+    private async scanDirectory(dir: string, baseDir: string, spinner: any): Promise<FileState[]> {
         const results: FileState[] = [];
-        const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+        let entries;
+        try {
+            entries = await fs.promises.readdir(dir, { withFileTypes: true });
+        } catch (err: any) {
+            // Ignore locked directories (EPERM, EBUSY)
+            return results;
+        }
 
         for (const entry of entries) {
-            // Ignore tamgabase internal directories and node_modules for tests
             if (entry.name === '.tamgabase' || entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist') {
                 continue;
             }
@@ -41,18 +46,26 @@ export class SyncEngine {
             const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
 
             if (entry.isDirectory()) {
-                const subResults = await this.scanDirectory(fullPath, baseDir);
+                const subResults = await this.scanDirectory(fullPath, baseDir, spinner);
                 results.push(...subResults);
             } else if (entry.isFile()) {
-                const stat = await fs.promises.stat(fullPath);
-                // Calculate hash
-                const hash = await CryptoUtils.hashFile(fullPath);
-                results.push({
-                    path: relPath,
-                    hash,
-                    size: stat.size,
-                    mtime: stat.mtimeMs
-                });
+                try {
+                    const stat = await fs.promises.stat(fullPath);
+                    spinner.text = `Scanning: ${relPath}`;
+                    const hash = await CryptoUtils.hashFile(fullPath);
+                    results.push({
+                        path: relPath,
+                        hash,
+                        size: stat.size,
+                        mtime: stat.mtimeMs
+                    });
+                } catch (err: any) {
+                    // Skip locked/unreadable files
+                    if (err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') {
+                        // Optionally log to debug, but continue scanning
+                        continue;
+                    }
+                }
             }
         }
         return results;
@@ -62,7 +75,7 @@ export class SyncEngine {
         const spinner = ora('Scanning workspace...').start();
         
         try {
-            const files = await this.scanDirectory(this.workspace, this.workspace);
+            const files = await this.scanDirectory(this.workspace, this.workspace, spinner);
             spinner.succeed(`Scanned ${files.length} files`);
             
             if (files.length === 0) {
@@ -90,7 +103,6 @@ export class SyncEngine {
                 spinner.succeed('Upload complete');
             }
 
-            // Create snapshot metadata
             spinner.start('Creating snapshot...');
             const snapshotId = `tb_${Date.now()}`;
             const metadata = {
@@ -104,7 +116,6 @@ export class SyncEngine {
             };
 
             await this.api.saveSnapshot(snapshotId, metadata);
-            // In a real system, we would update a "HEAD" ref. For now we update a fixed ref 'latest'
             await this.api.saveSnapshot('latest', { ref: snapshotId });
             
             spinner.succeed(`Snapshot created: ${chalk.cyan(snapshotId)}`);
@@ -139,12 +150,16 @@ export class SyncEngine {
                 const fileMeta = files[relPath];
                 const fullPath = path.join(this.workspace, relPath);
                 
-                // Check if file exists and has same hash
                 let needsDownload = true;
                 if (fs.existsSync(fullPath)) {
-                    const currentHash = await CryptoUtils.hashFile(fullPath);
-                    if (currentHash === fileMeta.hash) {
-                        needsDownload = false;
+                    try {
+                        const currentHash = await CryptoUtils.hashFile(fullPath);
+                        if (currentHash === fileMeta.hash) {
+                            needsDownload = false;
+                        }
+                    } catch {
+                        // If file is locked locally, assume it needs replacement or just fail gracefully.
+                        // We will try to download and overwrite it.
                     }
                 }
 
