@@ -12,7 +12,7 @@ export const createServerApp = (storage: LocalStorageBackend) => {
     app.use('/api/v1/objects', express.raw({ type: 'application/octet-stream', limit: '1gb' }));
 
     app.get('/api/v1/health', (req, res) => {
-        res.json({ status: 'ok', version: '1.0.0' });
+        res.json({ status: 'ok', version: '1.1.0' });
     });
 
     app.post('/api/v1/objects/:hash', requireAuth, async (req, res) => {
@@ -85,24 +85,27 @@ export const createServerApp = (storage: LocalStorageBackend) => {
         }
     });
 
-    app.post('/api/v1/snapshots/:id', requireAuth, async (req, res) => {
+    // Namespace/Cluster support for snapshots
+    app.post('/api/v1/clusters/:clusterId/snapshots/:id', requireAuth, async (req, res) => {
+        const clusterId = req.params.clusterId as string;
         const snapshotId = req.params.id as string;
         const metadata = req.body;
         
         try {
-            await storage.writeMetadata(`snapshot_${snapshotId}`, metadata);
+            await storage.writeMetadata(`cluster_${clusterId}_${snapshotId}`, metadata);
             res.status(201).json({ status: 'created' });
         } catch (err: any) {
-            Logger.error(`Failed to create snapshot ${snapshotId}`, err);
+            Logger.error(`Failed to create snapshot ${snapshotId} for cluster ${clusterId}`, err);
             res.status(500).json({ error: 'Internal server error saving snapshot' });
         }
     });
 
-    app.get('/api/v1/snapshots/:id', requireAuth, async (req, res) => {
+    app.get('/api/v1/clusters/:clusterId/snapshots/:id', requireAuth, async (req, res) => {
+        const clusterId = req.params.clusterId as string;
         const snapshotId = req.params.id as string;
         
         try {
-            const metadata = await storage.readMetadata(`snapshot_${snapshotId}`);
+            const metadata = await storage.readMetadata(`cluster_${clusterId}_${snapshotId}`);
             if (!metadata) {
                 return res.status(404).json({ error: 'Snapshot not found' });
             }

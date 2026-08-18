@@ -4,7 +4,6 @@ import fs from 'fs';
 
 export class ClientAPI {
     private baseUrl: string;
-    // We will hardcode mock key for now until we implement secure key storage
     private serverKey: string = "tb_sk_mock_123456789"; 
 
     constructor() {
@@ -79,8 +78,8 @@ export class ClientAPI {
         await fs.promises.writeFile(destPath, Buffer.from(buffer));
     }
 
-    public async saveSnapshot(snapshotId: string, metadata: any): Promise<void> {
-        const res = await fetch(`${this.baseUrl}/snapshots/${snapshotId}`, {
+    public async saveSnapshot(clusterId: string, snapshotId: string, metadata: any): Promise<void> {
+        const res = await fetch(`${this.baseUrl}/clusters/${clusterId}/snapshots/${snapshotId}`, {
             method: 'POST',
             headers: this.getHeaders(),
             body: JSON.stringify(metadata)
@@ -91,8 +90,8 @@ export class ClientAPI {
         }
     }
 
-    public async getSnapshot(snapshotId: string): Promise<any> {
-        const res = await fetch(`${this.baseUrl}/snapshots/${snapshotId}`, {
+    public async getSnapshot(clusterId: string, snapshotId: string): Promise<any> {
+        const res = await fetch(`${this.baseUrl}/clusters/${clusterId}/snapshots/${snapshotId}`, {
             headers: this.getHeaders()
         });
 

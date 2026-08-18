@@ -21,7 +21,6 @@ export class CLI_UI {
 
             if (fs.existsSync(bannerPath)) {
                 const banner = fs.readFileSync(bannerPath, 'utf8');
-                // Kullanıcının isteği üzerine logo artık tamamen beyaz
                 console.log(chalk.white(banner));
             } else {
                 console.log(chalk.white.bold('\n  TAMGABASE  \n'));
@@ -33,7 +32,7 @@ export class CLI_UI {
             if (config.mode === 'server') {
                 console.log('  ' + chalk.bgCyan.black.bold(' MODE: SERVER ') + ' \n');
             } else if (config.mode === 'client') {
-                console.log('  ' + chalk.bgGreen.black.bold(' MODE: CLIENT ') + ' \n');
+                console.log('  ' + chalk.bgGreen.black.bold(` MODE: CLIENT | CLUSTER: ${config.clusterId || 'UNKNOWN'} `) + ' \n');
             } else {
                 console.log('  ' + chalk.bgGray.white.bold(' UNINITIALIZED ') + ' \n');
             }
@@ -101,5 +100,14 @@ export class CLI_UI {
             message: 'Server key (e.g. tb_sk_...):',
             mask: '*'
         });
+    }
+
+    public static async askClusterId(): Promise<string> {
+        const cid = await input({
+            message: 'Enter a unique Cluster ID (Project Name) for this workspace:',
+            default: 'default-cluster'
+        });
+        // Sanitize to make it URL and file system safe
+        return cid.toLowerCase().replace(/[^a-z0-9-]/g, '-');
     }
 }

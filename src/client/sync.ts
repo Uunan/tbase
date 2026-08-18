@@ -17,6 +17,7 @@ interface FileState {
 export class SyncEngine {
     private api: ClientAPI;
     private workspace: string;
+    private clusterId: string;
 
     constructor() {
         this.api = new ClientAPI();
@@ -25,6 +26,7 @@ export class SyncEngine {
             throw new Error('Workspace path not set in config');
         }
         this.workspace = config.workspacePath;
+        this.clusterId = config.clusterId || 'default-cluster';
     }
 
     private async scanDirectory(dir: string, baseDir: string, spinner: any): Promise<FileState[]> {
@@ -33,7 +35,6 @@ export class SyncEngine {
         try {
             entries = await fs.promises.readdir(dir, { withFileTypes: true });
         } catch (err: any) {
-            // Ignore locked directories (EPERM, EBUSY)
             return results;
         }
 
@@ -60,9 +61,7 @@ export class SyncEngine {
                         mtime: stat.mtimeMs
                     });
                 } catch (err: any) {
-                    // Skip locked/unreadable files
                     if (err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') {
-                        // Optionally log to debug, but continue scanning
                         continue;
                     }
                 }
@@ -72,7 +71,7 @@ export class SyncEngine {
     }
 
     public async push(message: string = 'Snapshot'): Promise<void> {
-        const spinner = ora('Scanning workspace...').start();
+        const spinner = ora(`Scanning workspace for cluster [${chalk.cyan(this.clusterId)}]...`).start();
         
         try {
             const files = await this.scanDirectory(this.workspace, this.workspace, spinner);
@@ -107,6 +106,7 @@ export class SyncEngine {
             const snapshotId = `tb_${Date.now()}`;
             const metadata = {
                 id: snapshotId,
+                clusterId: this.clusterId,
                 timestamp: Date.now(),
                 message,
                 files: files.reduce((acc, f) => {
@@ -115,10 +115,12 @@ export class SyncEngine {
                 }, {} as Record<string, any>)
             };
 
-            await this.api.saveSnapshot(snapshotId, metadata);
-            await this.api.saveSnapshot('latest', { ref: snapshotId });
+            // Snapshot verisini kaydet
+            await this.api.saveSnapshot(this.clusterId, snapshotId, metadata);
+            // İlgili cluster'ın "latest" referansını güncelle
+            await this.api.saveSnapshot(this.clusterId, 'latest', { ref: snapshotId });
             
-            spinner.succeed(`Snapshot created: ${chalk.cyan(snapshotId)}`);
+            spinner.succeed(`Snapshot created for cluster ${chalk.cyan(this.clusterId)}: ${chalk.green(snapshotId)}`);
             
         } catch (err: any) {
             spinner.fail('Push failed');
@@ -127,15 +129,15 @@ export class SyncEngine {
     }
 
     public async pull(): Promise<void> {
-        const spinner = ora('Fetching latest snapshot...').start();
+        const spinner = ora(`Fetching latest snapshot for cluster [${chalk.cyan(this.clusterId)}]...`).start();
         try {
-            const latestRef = await this.api.getSnapshot('latest');
+            const latestRef = await this.api.getSnapshot(this.clusterId, 'latest');
             if (!latestRef || !latestRef.ref) {
-                spinner.fail('No snapshots found on server');
+                spinner.fail(`No snapshots found for cluster ${this.clusterId}`);
                 return;
             }
 
-            const snapshot = await this.api.getSnapshot(latestRef.ref);
+            const snapshot = await this.api.getSnapshot(this.clusterId, latestRef.ref);
             if (!snapshot || !snapshot.files) {
                 spinner.fail('Snapshot data corrupted');
                 return;
@@ -143,7 +145,7 @@ export class SyncEngine {
 
             const files = snapshot.files;
             const filePaths = Object.keys(files);
-            spinner.succeed(`Found snapshot ${chalk.cyan(snapshot.id)} with ${filePaths.length} files`);
+            spinner.succeed(`Found snapshot ${chalk.green(snapshot.id)} with ${filePaths.length} files`);
 
             spinner.start('Downloading missing objects...');
             for (const relPath of filePaths) {
@@ -158,8 +160,7 @@ export class SyncEngine {
                             needsDownload = false;
                         }
                     } catch {
-                        // If file is locked locally, assume it needs replacement or just fail gracefully.
-                        // We will try to download and overwrite it.
+                        // Kilitli dosya falan varsa mecburen es geçebiliriz
                     }
                 }
 

@@ -9,6 +9,7 @@ export interface TamgaConfig {
     storagePath?: string;
     workspacePath?: string;
     keyPolicy?: 'show_once' | 'rotatable';
+    clusterId?: string; // New field for Multi-Tenancy/Namespaces
 }
 
 export class ConfigManager {
@@ -24,7 +25,7 @@ export class ConfigManager {
 
     private loadConfig(): TamgaConfig {
         if (!fs.existsSync(this.configDir)) {
-            fs.mkdirSync(this.configDir, { recursive: true, mode: 0o700 }); // Secure permissions
+            fs.mkdirSync(this.configDir, { recursive: true, mode: 0o700 }); 
         }
 
         if (fs.existsSync(this.configPath)) {
@@ -48,7 +49,7 @@ export class ConfigManager {
     }
 
     private saveConfig() {
-        fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2), { mode: 0o600 }); // Strict permissions
+        fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2), { mode: 0o600 }); 
     }
 
     public getConfigDir(): string {

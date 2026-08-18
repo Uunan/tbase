@@ -13,7 +13,7 @@ export async function runCLI() {
     program
         .name('tamgabase')
         .description('TamgaBase - Git-like self-hosted data synchronization')
-        .version('1.0.3');
+        .version('1.1.0'); // Bumping to 1.1.0 due to cluster features
 
     program
         .command('init')
@@ -51,7 +51,8 @@ export async function runCLI() {
                     serverPort: undefined,
                     storagePath: undefined,
                     workspacePath: undefined,
-                    keyPolicy: undefined
+                    keyPolicy: undefined,
+                    clusterId: undefined
                 });
                 
                 try {
@@ -91,6 +92,7 @@ export async function runCLI() {
                 const address = await CLI_UI.askServerAddress();
                 const port = await CLI_UI.askServerPort();
                 const key = await CLI_UI.askServerKey();
+                const clusterId = await CLI_UI.askClusterId();
                 
                 Logger.info('Testing connection to TamgaBase server...');
                 
@@ -98,10 +100,11 @@ export async function runCLI() {
                     mode: 'client',
                     serverAddress: address,
                     serverPort: port,
-                    workspacePath: process.cwd()
+                    workspacePath: process.cwd(),
+                    clusterId: clusterId
                 });
                 
-                Logger.success('Client initialized and configuration saved.');
+                Logger.success(`Client initialized successfully in cluster: ${chalk.cyan(clusterId)}`);
                 console.log(chalk.green('\nYou can now push your files with: ') + chalk.bold('tamgabase push'));
             }
         });
@@ -122,6 +125,7 @@ export async function runCLI() {
                 console.log(chalk.cyan(`  Key Policy:`), config.keyPolicy);
             } else {
                 console.log(chalk.cyan(`  Server Address:`), `${config.serverAddress}:${config.serverPort}`);
+                console.log(chalk.cyan(`  Cluster ID:`), config.clusterId);
                 console.log(chalk.cyan(`  Workspace:`), config.workspacePath);
             }
             console.log();
