@@ -6,6 +6,7 @@ import { Logger } from '../utils/logger.js';
 import { configManager } from '../utils/config.js';
 import ora from 'ora';
 import chalk from 'chalk';
+import pLimit from 'p-limit';
 
 interface FileState {
     path: string;
@@ -18,6 +19,7 @@ export class SyncEngine {
     private api: ClientAPI;
     private workspace: string;
     private clusterId: string;
+    private concurrencyLimit: number = 5;
 
     constructor() {
         this.api = new ClientAPI();
@@ -84,21 +86,27 @@ export class SyncEngine {
 
             spinner.start('Checking objects with server...');
             const allHashes = Array.from(new Set(files.map(f => f.hash)));
-            const missingHashes = await this.api.checkMissingObjects(allHashes);
+            const missingHashes = await this.api.checkMissingObjects(this.clusterId, allHashes);
             spinner.succeed(`Objects: ${missingHashes.length} new, ${allHashes.length - missingHashes.length} already known`);
 
             if (missingHashes.length > 0) {
                 spinner.start(`Uploading ${missingHashes.length} objects...`);
                 let uploaded = 0;
-                for (const hash of missingHashes) {
-                    const file = files.find(f => f.hash === hash);
-                    if (file) {
-                        const fullPath = path.join(this.workspace, file.path);
-                        await this.api.uploadObject(hash, fullPath);
-                        uploaded++;
-                        spinner.text = `Uploading objects... ${Math.round((uploaded / missingHashes.length) * 100)}%`;
-                    }
-                }
+                const limit = pLimit(this.concurrencyLimit);
+                
+                const uploadTasks = missingHashes.map(hash => {
+                    return limit(async () => {
+                        const file = files.find(f => f.hash === hash);
+                        if (file) {
+                            const fullPath = path.join(this.workspace, file.path);
+                            await this.api.uploadObject(this.clusterId, hash, fullPath);
+                            uploaded++;
+                            spinner.text = `Uploading objects... ${Math.round((uploaded / missingHashes.length) * 100)}%`;
+                        }
+                    });
+                });
+                
+                await Promise.all(uploadTasks);
                 spinner.succeed('Upload complete');
             }
 
@@ -115,9 +123,7 @@ export class SyncEngine {
                 }, {} as Record<string, any>)
             };
 
-            // Snapshot verisini kaydet
             await this.api.saveSnapshot(this.clusterId, snapshotId, metadata);
-            // İlgili cluster'ın "latest" referansını güncelle
             await this.api.saveSnapshot(this.clusterId, 'latest', { ref: snapshotId });
             
             spinner.succeed(`Snapshot created for cluster ${chalk.cyan(this.clusterId)}: ${chalk.green(snapshotId)}`);
@@ -125,6 +131,9 @@ export class SyncEngine {
         } catch (err: any) {
             spinner.fail('Push failed');
             Logger.error('Error during push', err.message || err);
+            if (err.message.includes('Quota Exceeded')) {
+                console.log(chalk.red('\nYour cluster has exceeded its storage quota. Contact your server administrator.'));
+            }
         }
     }
 
@@ -148,30 +157,34 @@ export class SyncEngine {
             spinner.succeed(`Found snapshot ${chalk.green(snapshot.id)} with ${filePaths.length} files`);
 
             spinner.start('Downloading missing objects...');
-            for (const relPath of filePaths) {
-                const fileMeta = files[relPath];
-                const fullPath = path.join(this.workspace, relPath);
-                
-                let needsDownload = true;
-                if (fs.existsSync(fullPath)) {
-                    try {
-                        const currentHash = await CryptoUtils.hashFile(fullPath);
-                        if (currentHash === fileMeta.hash) {
-                            needsDownload = false;
-                        }
-                    } catch {
-                        // Kilitli dosya falan varsa mecburen es geçebiliriz
+            const limit = pLimit(this.concurrencyLimit);
+            
+            const downloadTasks = filePaths.map(relPath => {
+                return limit(async () => {
+                    const fileMeta = files[relPath];
+                    const fullPath = path.join(this.workspace, relPath);
+                    
+                    let needsDownload = true;
+                    if (fs.existsSync(fullPath)) {
+                        try {
+                            const currentHash = await CryptoUtils.hashFile(fullPath);
+                            if (currentHash === fileMeta.hash) {
+                                needsDownload = false;
+                            }
+                        } catch {}
                     }
-                }
 
-                if (needsDownload) {
-                    const dir = path.dirname(fullPath);
-                    if (!fs.existsSync(dir)) {
-                        fs.mkdirSync(dir, { recursive: true });
+                    if (needsDownload) {
+                        const dir = path.dirname(fullPath);
+                        if (!fs.existsSync(dir)) {
+                            fs.mkdirSync(dir, { recursive: true });
+                        }
+                        await this.api.downloadObject(this.clusterId, fileMeta.hash, fullPath);
                     }
-                    await this.api.downloadObject(fileMeta.hash, fullPath);
-                }
-            }
+                });
+            });
+            
+            await Promise.all(downloadTasks);
             spinner.succeed('Pull complete. Workspace updated.');
 
         } catch (err: any) {

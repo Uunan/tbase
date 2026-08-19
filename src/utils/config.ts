@@ -10,6 +10,10 @@ export interface TamgaConfig {
     workspacePath?: string;
     keyPolicy?: 'show_once' | 'rotatable';
     clusterId?: string; // New field for Multi-Tenancy/Namespaces
+    storageBackend?: 'local' | 's3';
+    s3Bucket?: string;
+    s3Region?: string;
+    s3Prefix?: string;
 }
 
 export class ConfigManager {

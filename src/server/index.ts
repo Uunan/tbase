@@ -1,5 +1,6 @@
 import { createServerApp } from './app.js';
 import { LocalStorageBackend } from '../storage/local.js';
+import { S3StorageBackend } from '../storage/s3.js';
 import { setRuntimeServerKey } from './auth.js';
 import { Logger } from '../utils/logger.js';
 import { configManager } from '../utils/config.js';
@@ -28,12 +29,35 @@ export const startServer = () => {
     
     setRuntimeServerKey(key);
 
-    const storage = new LocalStorageBackend(storagePath);
+    let storage;
+    let s3Prefix = '';
+    if (config.storageBackend === 's3') {
+        const bucket = process.env.AWS_S3_BUCKET || config.s3Bucket;
+        const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || config.s3Region;
+        s3Prefix = process.env.TAMGABASE_S3_PREFIX || config.s3Prefix || '';
+        try {
+            storage = new S3StorageBackend({ bucket: bucket || '', region, prefix: s3Prefix });
+        } catch (err: any) {
+            Logger.error('Failed to initialize S3 storage: ' + err.message);
+            console.log(chalk.yellow('Check AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION and AWS_S3_BUCKET environment variables.'));
+            process.exit(1);
+        }
+    } else {
+        storage = new LocalStorageBackend(storagePath);
+    }
+
     const app = createServerApp(storage);
 
     const server = app.listen(port, '0.0.0.0', () => {
-        console.log(chalk.green(`  ✓ TamgaBase Server running on port ${port}`));
-        console.log(chalk.cyan(`  Storage Path: ${storagePath}`));
+        console.log(chalk.green(`  �o" TamgaBase Server running on port ${port}`));
+        if (config.storageBackend === 's3') {
+            console.log(chalk.cyan(`  Storage Backend: S3`));
+            console.log(chalk.cyan(`  S3 Bucket: ${process.env.AWS_S3_BUCKET || config.s3Bucket}`));
+            if (s3Prefix) console.log(chalk.cyan(`  S3 Prefix: ${s3Prefix}`));
+        } else {
+            console.log(chalk.cyan(`  Storage Backend: Local`));
+            console.log(chalk.cyan(`  Storage Path: ${storagePath}`));
+        }
         console.log(chalk.cyan(`  Key Policy: ${config.keyPolicy}`));
         
         // Linux/Ubuntu kullanıcıları için akıllı Güvenlik Duvarı uyarısı
