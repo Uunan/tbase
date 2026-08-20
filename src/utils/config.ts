@@ -6,6 +6,7 @@ export interface TamgaConfig {
     mode: 'server' | 'client' | null;
     serverAddress?: string;
     serverPort?: number;
+    serverProtocol?: 'http' | 'https';
     storagePath?: string;
     workspacePath?: string;
     keyPolicy?: 'show_once' | 'rotatable';

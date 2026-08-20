@@ -326,7 +326,7 @@ async function main() {
         const final3mb = Buffer.alloc(3 * 1024 * 1024);
         crypto.randomFillSync(final3mb);
         const finalCode = await directUpload(CryptoUtils.hashContent(final3mb), final3mb);
-        record('Quota (parallel, in-flight guard)', successCount === 1 && rejectedCount === 2 && extraCode === 0 && finalCode === 402,
+        record('Quota (parallel, in-flight guard)', successCount === 1 && rejectedCount === 2 && extraCode === 402 && finalCode === 402,
             `parallel=[${codes.join(',')}] extra=${extraCode} final3MB=${finalCode}`);
 
         const raceBuf = Buffer.from('race-condition-same-content');

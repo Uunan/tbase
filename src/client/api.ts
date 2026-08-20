@@ -15,7 +15,8 @@ export class ClientAPI {
         }
         const host = config.serverAddress || 'localhost';
         const port = config.serverPort || 7420;
-        this.baseUrl = `http://${host}:${port}/api/v1`;
+        const protocol = config.serverProtocol || 'http';
+        this.baseUrl = `${protocol}://${host}:${port}/api/v1`;
 
         const configPath = path.join(configManager.getConfigDir(), 'client_keys.json');
         let keys: any = {};

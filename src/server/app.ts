@@ -127,16 +127,18 @@ export const createServerApp = (storage: StorageBackend) => {
                 return res.status(402).json({ error: 'Quota Exceeded' });
             }
 
+            let writeSuccess = false;
             try {
                 const { CryptoUtils } = await import('../core/crypto.js');
                 const calculatedHash = CryptoUtils.hashContent(content);
                 if (calculatedHash !== hash) throw new Error('Hash mismatch');
 
                 await storage.writeObject(hash, content);
+                writeSuccess = true;
                 res.status(201).json({ status: 'created' });
             } finally {
                 // Always release in-flight after physical write completes/fails
-                clusterManager.releaseInFlightQuota(clusterId, size);
+                clusterManager.releaseInFlightQuota(clusterId, size, writeSuccess);
             }
         } catch (err: any) {
             Logger.error(`Upload error ${hash}`, err);

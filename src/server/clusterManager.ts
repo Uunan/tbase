@@ -14,6 +14,8 @@ export interface ClusterConfig {
 export class ClusterManager {
     private storage: StorageBackend;
     private inFlightBytes: Map<string, number> = new Map();
+    private quotaCache: Map<string, { usedBytes: number; storageLimitBytes: number }> = new Map();
+    private pushedBytes: Map<string, number> = new Map();
 
     constructor(storage: StorageBackend) {
         this.storage = storage;
@@ -48,6 +50,8 @@ export class ClusterManager {
 
         await this.storage.writeMetadata(this.getConfigKey(clusterId), config);
         await this.updateTokenIndex(clusterId, null, accessKey);
+        this.quotaCache.set(clusterId, { usedBytes: 0, storageLimitBytes: limitBytes });
+        this.pushedBytes.set(clusterId, 0);
         
         return config;
     }
@@ -120,11 +124,17 @@ export class ClusterManager {
     }
 
     public async checkAndReserveQuota(clusterId: string, bytes: number): Promise<boolean> {
-        const config = await this.getCluster(clusterId);
-        if (!config) return false;
+        let entry = this.quotaCache.get(clusterId);
+        if (!entry) {
+            const config = await this.getCluster(clusterId);
+            if (!config) return false;
+            entry = { usedBytes: config.usedBytes, storageLimitBytes: config.storageLimitBytes };
+            this.quotaCache.set(clusterId, entry);
+        }
 
         const inFlight = this.inFlightBytes.get(clusterId) || 0;
-        if (config.usedBytes + inFlight + bytes > config.storageLimitBytes) {
+        const pushed = this.pushedBytes.get(clusterId) || 0;
+        if (entry.usedBytes + pushed + inFlight + bytes > entry.storageLimitBytes) {
             return false;
         }
 
@@ -132,9 +142,13 @@ export class ClusterManager {
         return true;
     }
 
-    public releaseInFlightQuota(clusterId: string, bytes: number) {
+    public releaseInFlightQuota(clusterId: string, bytes: number, success: boolean) {
         const inFlight = this.inFlightBytes.get(clusterId) || 0;
         this.inFlightBytes.set(clusterId, Math.max(0, inFlight - bytes));
+        if (success) {
+            const pushed = this.pushedBytes.get(clusterId) || 0;
+            this.pushedBytes.set(clusterId, pushed + bytes);
+        }
     }
 
     public async recalculateQuotaFromSnapshot(clusterId: string, snapshotId: string): Promise<void> {
@@ -151,6 +165,8 @@ export class ClusterManager {
 
         config.usedBytes = totalBytes;
         await this.storage.writeMetadata(this.getConfigKey(clusterId), config);
+        this.quotaCache.set(clusterId, { usedBytes: totalBytes, storageLimitBytes: config.storageLimitBytes });
         this.inFlightBytes.set(clusterId, 0);
+        this.pushedBytes.set(clusterId, 0);
     }
 }
